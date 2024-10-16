@@ -1,12 +1,12 @@
 FROM lukemathwalker/cargo-chef:latest-rust-1.75-bookworm AS chef
 WORKDIR /usr/src
 
-ENV SCCACHE=0.5.4
 ENV RUSTC_WRAPPER=/usr/local/bin/sccache
 
 # Donwload, configure sccache
-RUN curl -fsSL https://github.com/mozilla/sccache/releases/download/v$SCCACHE/sccache-v$SCCACHE-x86_64-unknown-linux-musl.tar.gz | tar -xzv --strip-components=1 -C /usr/local/bin sccache-v$SCCACHE-x86_64-unknown-linux-musl/sccache && \
-    chmod +x /usr/local/bin/sccache
+RUN apt-get update && apt-get install -y \
+    sccache \
+    && rm -rf /var/lib/apt/lists/*
 
 FROM chef AS planner
 
@@ -28,6 +28,8 @@ ARG ACTIONS_CACHE_URL
 ARG ACTIONS_RUNTIME_TOKEN
 ARG SCCACHE_GHA_ENABLED
 
+COPY --from=chef /usr/bin/sccache /usr/local/bin/sccache
+
 COPY --from=planner /usr/src/recipe.json recipe.json
 
 RUN cargo chef cook --release --features ort --no-default-features --recipe-path recipe.json && sccache -s
@@ -44,11 +46,9 @@ RUN cargo build --release --bin text-embeddings-router -F ort -F http --no-defau
 
 FROM builder AS grpc-builder
 
-RUN PROTOC_ZIP=protoc-21.12-linux-x86_64.zip && \
-    curl -OL https://github.com/protocolbuffers/protobuf/releases/download/v21.12/$PROTOC_ZIP && \
-    unzip -o $PROTOC_ZIP -d /usr/local bin/protoc && \
-    unzip -o $PROTOC_ZIP -d /usr/local 'include/*' && \
-    rm -f $PROTOC_ZIP
+RUN apt-get update && apt-get install -y \
+    protobuf-compiler \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY proto proto
 
